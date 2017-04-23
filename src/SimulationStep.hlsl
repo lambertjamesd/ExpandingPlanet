@@ -28,10 +28,10 @@ cbuffer cbImmutable
 	static uint Nil = ~0u;
 }
 
-StructuredBuffer<uint> oldIndex : register(t0);
-StructuredBuffer<PosVelo> oldPoint : register(t1);
-RWStructuredBuffer<uint> newIndex : register(u0);
-RWStructuredBuffer<PosVelo> newPoint : register(u1);
+StructuredBuffer<PosVelo> oldPoint : register(t0);
+StructuredBuffer<uint> oldIndex : register(t1);
+RWStructuredBuffer<PosVelo> newPoint : register(u0);
+RWStructuredBuffer<uint> newIndex : register(u1);
 
 uint CellPositionToIndex(uint3 cellPosition)
 {
@@ -87,12 +87,23 @@ void ClearIndex(uint index, uint pointIndex)
 void SimulationStep(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
 	uint pointIndex = DTid.x;
-	float4 pos = oldPoint[pointIndex].pos;
-	uint lastIndex = PositionToIndex(pos.xyz);
+	float3 pos = oldPoint[pointIndex].pos.xyz;
+	uint lastIndex = PositionToIndex(pos);
 
-	// Update position
+	float cosVal;
+	float sinVal;
 
-	uint currentIndex = PositionToIndex(pos.xyz);
+	sincos(3.14 / 60000, sinVal, cosVal);
+
+	float3x3 rotationMatrix = {
+		cosVal, -sinVal, 0,
+		sinVal, cosVal, 0,
+		0, 0, 1
+	};
+
+	pos = mul(pos, rotationMatrix);
+
+	uint currentIndex = PositionToIndex(pos);
 
 	if (DTid.x < particleCount)
 	{
@@ -101,8 +112,8 @@ void SimulationStep(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, ui
 		{
 			ClearIndex(prevIndexCell, pointIndex);
 		}
-
-		newPoint[pointIndex].pos = pos;
+		 
+		newPoint[pointIndex].pos = float4(pos, 1);
 		newPoint[pointIndex].nextPoint = WriteToIndex(currentIndex, pointIndex);
 		newPoint[pointIndex].prevIndexCell = lastIndex;
 	}

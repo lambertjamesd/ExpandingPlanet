@@ -18,10 +18,10 @@ void SimulationStep::BuildRootSignature()
 
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[DataFrameSize];
 
-	ranges[ReadPointListIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-	ranges[ReadSpacialIndexIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-	ranges[WritePointListIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	ranges[WriteSpacialIndexIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	ranges[ReadPointListIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[ReadSpacialIndexIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+	ranges[WritePointListIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	ranges[WriteSpacialIndexIndex].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 
 	CD3DX12_ROOT_PARAMETER1 rootParameters[RootParameterCount];
 	rootParameters[ConstantBufferView].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -47,7 +47,7 @@ void SimulationStep::BuildRootSignature()
 
 	for (UINT32 i = 0; i < FRAME_COUNT; ++i) {
 		UINT32 offset = i * DataFrameSize;
-		CD3DX12_CPU_DESCRIPTOR_HANDLE pointRead(descriptorHeap, ReadSpacialIndexIndex + offset, m_srvUavDescriptorSize);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE pointRead(descriptorHeap, ReadPointListIndex + offset, m_srvUavDescriptorSize);
 		CD3DX12_CPU_DESCRIPTOR_HANDLE indexRead(descriptorHeap, ReadSpacialIndexIndex + offset, m_srvUavDescriptorSize);
 		CD3DX12_CPU_DESCRIPTOR_HANDLE pointWrite(descriptorHeap, WritePointListIndex + offset, m_srvUavDescriptorSize);
 		CD3DX12_CPU_DESCRIPTOR_HANDLE indexWrite(descriptorHeap, WriteSpacialIndexIndex + offset, m_srvUavDescriptorSize);
@@ -120,9 +120,14 @@ void SimulationStep::Step(UINT32 readFrame, ID3D12GraphicsCommandList& commandLi
 	commandList.SetComputeRootConstantBufferView(ConstantBufferView, m_parameters.GetConstantBuffer()->GetGPUVirtualAddress());
 	commandList.SetComputeRootDescriptorTable(SRVUAV, srvHandle);
 
-	//commandList.Dispatch();
+	commandList.Dispatch(static_cast<int>(ceil(m_parameters.GetData().particleCount / 128.0f)), 1, 1);
 
 	commandList.ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_frames[writeFrame].m_pointList->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 	commandList.ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_frames[writeFrame].m_spacialIndex->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 
+}
+
+void SimulationStep::Reset(ID3D12GraphicsCommandList& commandList, ID3D12CommandAllocator& commandAllocator)
+{
+	ThrowIfFailed(commandList.Reset(&commandAllocator, m_computeState.Get()));
 }

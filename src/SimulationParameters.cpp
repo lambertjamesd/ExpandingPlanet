@@ -53,3 +53,8 @@ ID3D12Resource* SimulationParameters::GetConstantBuffer()
 {
 	return m_constantBufferCS.Get();
 }
+
+SimulationParameters::SimulationData& SimulationParameters::GetData()
+{
+	return *m_data;
+}

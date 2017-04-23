@@ -65,12 +65,6 @@ private:
 		float padding[32];
 	};
 
-	struct ConstantBufferCS
-	{
-		UINT param[4];
-		float paramf[4];
-	};
-
 	// Pipeline objects.
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
@@ -82,7 +76,6 @@ private:
 	ComPtr<ID3D12CommandAllocator> m_commandAllocators[FrameCount];
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12RootSignature> m_rootSignature;
-	ComPtr<ID3D12RootSignature> m_computeRootSignature;
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_srvUavHeap;
@@ -97,7 +90,6 @@ private:
 
 	// Asset objects.
 	ComPtr<ID3D12PipelineState> m_pipelineState;
-	ComPtr<ID3D12PipelineState> m_computeState;
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 	ComPtr<ID3D12Resource> m_vertexBuffer;
 	ComPtr<ID3D12Resource> m_vertexBufferUpload;
@@ -106,11 +98,9 @@ private:
 	std::unique_ptr<Spectrum> m_hueSpectrum;
 	ComPtr<ID3D12Resource> m_constantBufferGS;
 	UINT8* m_pConstantBufferGSData;
-	ComPtr<ID3D12Resource> m_constantBufferCS;
 	ComPtr<ID3D12Resource> m_particleNormal;
 	ComPtr<ID3D12Resource> m_particleNormalUpload;
 
-	UINT m_srvIndex;		// Denotes which of the particle buffer resource views is the SRV (0 or 1). The UAV is 1 - srvIndex.
 	UINT m_heightInstances;
 	UINT m_widthInstances;
 	SimpleCamera m_camera;

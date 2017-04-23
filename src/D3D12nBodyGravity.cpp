@@ -32,7 +32,6 @@ D3D12nBodyGravity::D3D12nBodyGravity(UINT width, UINT height, std::wstring name)
 	m_pConstantBufferGSData(nullptr),
 	m_renderContextFenceValue(0),
 	m_terminating(0),
-	m_srvIndex{},
 	m_frameFenceValues{}
 {
 	m_renderContextFenceValues = 0;
@@ -258,27 +257,6 @@ void D3D12nBodyGravity::LoadAssets()
 			ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 			NAME_D3D12_OBJECT(m_rootSignature);
 		}
-
-		// Compute root signature.
-		{
-			CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-			ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
-			ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-
-			CD3DX12_ROOT_PARAMETER1 rootParameters[ComputeRootParametersCount];
-			rootParameters[ComputeRootCBV].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-			rootParameters[ComputeRootSRVTable].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
-			rootParameters[ComputeRootUAVTable].InitAsDescriptorTable(1, &ranges[1], D3D12_SHADER_VISIBILITY_ALL);
-
-			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC computeRootSignatureDesc;
-			computeRootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr);
-
-			ComPtr<ID3DBlob> signature;
-			ComPtr<ID3DBlob> error;
-			ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&computeRootSignatureDesc, featureData.HighestVersion, &signature, &error));
-			ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_computeRootSignature)));
-			NAME_D3D12_OBJECT(m_computeRootSignature);
-		}
 	}
 
 	// Create the pipeline states, which includes compiling and loading shaders.
@@ -286,7 +264,6 @@ void D3D12nBodyGravity::LoadAssets()
 		ComPtr<ID3DBlob> vertexShader;
 		ComPtr<ID3DBlob> geometryShader;
 		ComPtr<ID3DBlob> pixelShader;
-		ComPtr<ID3DBlob> computeShader;
 
 #if defined(_DEBUG)
 		// Enable better shader debugging with the graphics debugging tools.
@@ -299,7 +276,6 @@ void D3D12nBodyGravity::LoadAssets()
 		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "VSParticleDraw", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
 		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "GSParticleDraw", "gs_5_0", compileFlags, 0, &geometryShader, nullptr));
 		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "PSParticleDraw", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
-		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"NBodyGravityCS.hlsl").c_str(), nullptr, nullptr, "CSMain", "cs_5_0", compileFlags, 0, &computeShader, nullptr));
 
 		D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 		{
@@ -325,14 +301,6 @@ void D3D12nBodyGravity::LoadAssets()
 
 		ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 		NAME_D3D12_OBJECT(m_pipelineState);
-
-		// Describe and create the compute pipeline state object (PSO).
-		D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
-		computePsoDesc.pRootSignature = m_computeRootSignature.Get();
-		computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
-
-		ThrowIfFailed(m_device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_computeState)));
-		NAME_D3D12_OBJECT(m_computeState);
 	}
 
 	// Create the command list.
@@ -341,49 +309,6 @@ void D3D12nBodyGravity::LoadAssets()
 
 	CreateVertexBuffer();
 	CreateParticleBuffers();
-
-	// Note: ComPtr's are CPU objects but this resource needs to stay in scope until
-	// the command list that references it has finished executing on the GPU.
-	// We will flush the GPU at the end of this method to ensure the resource is not
-	// prematurely destroyed.
-	ComPtr<ID3D12Resource> constantBufferCSUpload;
-
-	// Create the compute shader's constant buffer.
-	{
-		const UINT bufferSize = sizeof(ConstantBufferCS);
-
-		ThrowIfFailed(m_device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			nullptr,
-			IID_PPV_ARGS(&m_constantBufferCS)));
-
-		ThrowIfFailed(m_device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&constantBufferCSUpload)));
-
-		NAME_D3D12_OBJECT(m_constantBufferCS);
-
-		ConstantBufferCS constantBufferCS = {};
-		constantBufferCS.param[0] = ParticleCount;
-		constantBufferCS.param[1] = int(ceil(ParticleCount / 128.0f));
-		constantBufferCS.paramf[0] = 0.1f;
-		constantBufferCS.paramf[1] = 1.0f;
-
-		D3D12_SUBRESOURCE_DATA computeCBData = {};
-		computeCBData.pData = reinterpret_cast<UINT8*>(&constantBufferCS);
-		computeCBData.RowPitch = bufferSize;
-		computeCBData.SlicePitch = computeCBData.RowPitch;
-
-		UpdateSubresources<1>(m_commandList.Get(), m_constantBufferCS.Get(), constantBufferCSUpload.Get(), 0, 0, 1, &computeCBData);
-		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_constantBufferCS.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-	}
 
 	// Create the geometry shader's constant buffer.
 	{
@@ -475,8 +400,8 @@ void D3D12nBodyGravity::LoadAssets()
 		m_device->CreateShaderResourceView(m_particleNormal.Get(), &srvDesc, cpuHandle);
 	}
 
-	//m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount));
-	//m_simulationState.reset(new SimulationStep(*m_device.Get(), *m_commandList.Get(), m_dataFrames, *m_parameters, GetAssetFullPath(L"SimulationStep.cso")));
+	m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount));
+	m_simulationState.reset(new SimulationStep(*m_device.Get(), *m_commandList.Get(), m_dataFrames, *m_parameters, GetAssetFullPath(L"SimulationStep.cso")));
 
 	// Close the command list and execute it to begin the initial GPU setup.
 	ThrowIfFailed(m_commandList->Close());
@@ -719,7 +644,7 @@ void D3D12nBodyGravity::PopulateCommandList()
 	float viewportHeight = static_cast<float>(static_cast<UINT>(m_viewport.Height) / m_heightInstances);
 	float viewportWidth = static_cast<float>(static_cast<UINT>(m_viewport.Width) / m_widthInstances);
 
-	const UINT srvIndex = (m_srvIndex == 0 ? SrvParticlePosVelo0 : SrvParticlePosVelo1);
+	const UINT srvIndex = ((m_parameters->GetData().currentBatch & 0x1) == 0 ? SrvParticlePosVelo0 : SrvParticlePosVelo1);
 
 	CD3DX12_VIEWPORT viewport(
 		0.0f,
@@ -770,7 +695,6 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
 		ThrowIfFailed(pFence->SetEventOnCompletion(threadFenceValue, m_threadFenceEvents));
 		WaitForSingleObject(m_threadFenceEvents, INFINITE);
 
-		//m_parameters->PostUpdate();
 
 		// Wait for the render thread to be done with the SRV so that
 		// the next frame in the simulation can run.
@@ -781,12 +705,11 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
 			InterlockedExchange(&m_renderContextFenceValues, 0);
 		}
 
-		// Swap the indices to the SRV and UAV.
-		m_srvIndex = 1 - m_srvIndex;
+		m_parameters->PostUpdate();
 
 		// Prepare for the next frame.
 		ThrowIfFailed(pCommandAllocator->Reset());
-		ThrowIfFailed(pCommandList->Reset(pCommandAllocator, m_computeState.Get()));
+		m_simulationState->Reset(*pCommandList, *pCommandAllocator);
 	}
 
 	return 0;
@@ -796,41 +719,7 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
 void D3D12nBodyGravity::Simulate(UINT threadIndex)
 {
 	ID3D12GraphicsCommandList* pCommandList = m_computeCommandList.Get();
-
-	UINT srvIndex;
-	UINT uavIndex;
-	ID3D12Resource *pUavResource;
-	if (m_srvIndex == 0)
-	{
-		srvIndex = SrvParticlePosVelo0;
-		uavIndex = UavParticlePosVelo1;
-		pUavResource = m_dataFrames[1].m_pointList->GetResource();
-	}
-	else
-	{
-		srvIndex = SrvParticlePosVelo1;
-		uavIndex = UavParticlePosVelo0;
-		pUavResource = m_dataFrames[1].m_pointList->GetResource();
-	}
-
-	pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pUavResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-
-	pCommandList->SetPipelineState(m_computeState.Get());
-	pCommandList->SetComputeRootSignature(m_computeRootSignature.Get());
-
-	ID3D12DescriptorHeap* ppHeaps[] = { m_srvUavHeap.Get() };
-	pCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_srvUavHeap->GetGPUDescriptorHandleForHeapStart(), srvIndex + threadIndex, m_srvUavDescriptorSize);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_srvUavHeap->GetGPUDescriptorHandleForHeapStart(), uavIndex + threadIndex, m_srvUavDescriptorSize);
-
-	pCommandList->SetComputeRootConstantBufferView(ComputeRootCBV, m_constantBufferCS->GetGPUVirtualAddress());
-	pCommandList->SetComputeRootDescriptorTable(ComputeRootSRVTable, srvHandle);
-	pCommandList->SetComputeRootDescriptorTable(ComputeRootUAVTable, uavHandle);
-
-	pCommandList->Dispatch(static_cast<int>(ceil(ParticleCount / 128.0f)), 1, 1);
-
-	pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pUavResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
+	m_simulationState->Step(m_parameters->GetData().currentBatch & 0x1, *pCommandList);
 }
 
 void D3D12nBodyGravity::OnDestroy()

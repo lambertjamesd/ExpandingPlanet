@@ -45,5 +45,6 @@ public:
 	~SimulationStep();
 
 	void Step(UINT32 readFrame, ID3D12GraphicsCommandList& commandList);
+	void Reset(ID3D12GraphicsCommandList& commandList, ID3D12CommandAllocator& commandAllocator);
 };
 
