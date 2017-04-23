@@ -23,6 +23,7 @@ class SimulationStep
 	SimulationParameters& m_parameters;
 
 	void BuildRootSignature();
+	void BuildComputeState(const std::wstring& shaderPath);
 
 	enum RootParameterLocations {
 		ConstantBufferView,
@@ -40,7 +41,7 @@ class SimulationStep
 
 	static const UINT32 FRAME_COUNT = 2;
 public:
-	SimulationStep(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, DataFrame* frames, SimulationParameters& parameters);
+	SimulationStep(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, DataFrame* frames, SimulationParameters& parameters, const std::wstring& shaderPath);
 	~SimulationStep();
 
 	void Step(UINT32 readFrame, ID3D12GraphicsCommandList& commandList);

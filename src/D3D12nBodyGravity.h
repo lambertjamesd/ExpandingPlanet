@@ -17,6 +17,8 @@
 #include "PointList.h"
 #include "SpacialIndex.h"
 #include "Spectrum.h"
+#include "DataFrame.h"
+#include "SimulationStep.h"
 #include <memory>
 
 using namespace DirectX;
@@ -90,6 +92,9 @@ private:
 	UINT m_srvUavDescriptorSize;
 	DXGI_FORMAT m_depthBufferFormat;
 
+	std::unique_ptr<SimulationParameters> m_parameters;
+	std::unique_ptr<SimulationStep> m_simulationState;
+
 	// Asset objects.
 	ComPtr<ID3D12PipelineState> m_pipelineState;
 	ComPtr<ID3D12PipelineState> m_computeState;
@@ -97,10 +102,7 @@ private:
 	ComPtr<ID3D12Resource> m_vertexBuffer;
 	ComPtr<ID3D12Resource> m_vertexBufferUpload;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-	std::unique_ptr<PointList> m_pointBuffer0;
-	std::unique_ptr<PointList> m_pointBuffer1;
-	std::unique_ptr<SpacialIndex> m_spacialIndex0;
-	std::unique_ptr<SpacialIndex> m_spacialIndex1;
+	DataFrame m_dataFrames[FrameCount];
 	std::unique_ptr<Spectrum> m_hueSpectrum;
 	ComPtr<ID3D12Resource> m_constantBufferGS;
 	UINT8* m_pConstantBufferGSData;

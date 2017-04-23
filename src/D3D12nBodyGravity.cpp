@@ -475,6 +475,9 @@ void D3D12nBodyGravity::LoadAssets()
 		m_device->CreateShaderResourceView(m_particleNormal.Get(), &srvDesc, cpuHandle);
 	}
 
+	//m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount));
+	//m_simulationState.reset(new SimulationStep(*m_device.Get(), *m_commandList.Get(), m_dataFrames, *m_parameters, GetAssetFullPath(L"SimulationStep.cso")));
+
 	// Close the command list and execute it to begin the initial GPU setup.
 	ThrowIfFailed(m_commandList->Close());
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
@@ -540,30 +543,27 @@ void D3D12nBodyGravity::CreateVertexBuffer()
 // Create the position and velocity buffer shader resources.
 void D3D12nBodyGravity::CreateParticleBuffers()
 {
-	m_pointBuffer0.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, ParticleSpread));
-	m_pointBuffer1.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, ParticleSpread));
+	m_dataFrames[0].m_pointList.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, ParticleSpread));
+	m_dataFrames[1].m_pointList.reset(new PointList(*m_dataFrames[0].m_pointList));
 
 	UINT32 indexResolution = 32;
 
-	m_spacialIndex0.reset(new SpacialIndex(
+	m_dataFrames[0].m_spacialIndex.reset(new SpacialIndex(
 		*m_device.Get(),
 		*m_commandList.Get(), 
 		ParticleSpread * 2.0f / indexResolution,
 		indexResolution
 	));
 
-	m_spacialIndex1.reset(new SpacialIndex(
+	m_dataFrames[1].m_spacialIndex.reset(new SpacialIndex(
 		*m_device.Get(),
 		*m_commandList.Get(),
 		ParticleSpread * 2.0f / indexResolution,
 		indexResolution
 	));
 
-	m_spacialIndex0->PopulateIndex(*m_pointBuffer0);
-	m_spacialIndex1->PopulateIndex(*m_pointBuffer0);
-
-	m_pointBuffer0->PouplateBuffer();
-	m_pointBuffer1->PouplateBuffer();
+	m_dataFrames[0].PopulateIndex();
+	m_dataFrames[1].PopulateIndex();
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -577,8 +577,8 @@ void D3D12nBodyGravity::CreateParticleBuffers()
 		
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle0(m_srvUavHeap->GetCPUDescriptorHandleForHeapStart(), SrvParticlePosVelo0, m_srvUavDescriptorSize);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle1(m_srvUavHeap->GetCPUDescriptorHandleForHeapStart(), SrvParticlePosVelo1, m_srvUavDescriptorSize);
-	m_device->CreateShaderResourceView(m_pointBuffer0->GetResource(), &srvDesc, srvHandle0);
-	m_device->CreateShaderResourceView(m_pointBuffer1->GetResource(), &srvDesc, srvHandle1);
+	m_device->CreateShaderResourceView(m_dataFrames[0].m_pointList->GetResource(), &srvDesc, srvHandle0);
+	m_device->CreateShaderResourceView(m_dataFrames[1].m_pointList->GetResource(), &srvDesc, srvHandle1);
 
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 	uavDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -591,8 +591,8 @@ void D3D12nBodyGravity::CreateParticleBuffers()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle0(m_srvUavHeap->GetCPUDescriptorHandleForHeapStart(), UavParticlePosVelo0, m_srvUavDescriptorSize);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(m_srvUavHeap->GetCPUDescriptorHandleForHeapStart(), UavParticlePosVelo1, m_srvUavDescriptorSize);
-	m_device->CreateUnorderedAccessView(m_pointBuffer0->GetResource(), nullptr, &uavDesc, uavHandle0);
-	m_device->CreateUnorderedAccessView(m_pointBuffer1->GetResource(), nullptr, &uavDesc, uavHandle1);
+	m_device->CreateUnorderedAccessView(m_dataFrames[0].m_pointList->GetResource(), nullptr, &uavDesc, uavHandle0);
+	m_device->CreateUnorderedAccessView(m_dataFrames[1].m_pointList->GetResource(), nullptr, &uavDesc, uavHandle1);
 }
 
 void D3D12nBodyGravity::CreateAsyncContexts()
@@ -770,6 +770,8 @@ DWORD D3D12nBodyGravity::AsyncComputeThreadProc(int threadIndex)
 		ThrowIfFailed(pFence->SetEventOnCompletion(threadFenceValue, m_threadFenceEvents));
 		WaitForSingleObject(m_threadFenceEvents, INFINITE);
 
+		//m_parameters->PostUpdate();
+
 		// Wait for the render thread to be done with the SRV so that
 		// the next frame in the simulation can run.
 		UINT64 renderContextFenceValue = InterlockedGetValue(&m_renderContextFenceValues);
@@ -802,13 +804,13 @@ void D3D12nBodyGravity::Simulate(UINT threadIndex)
 	{
 		srvIndex = SrvParticlePosVelo0;
 		uavIndex = UavParticlePosVelo1;
-		pUavResource = m_pointBuffer1->GetResource();
+		pUavResource = m_dataFrames[1].m_pointList->GetResource();
 	}
 	else
 	{
 		srvIndex = SrvParticlePosVelo1;
 		uavIndex = UavParticlePosVelo0;
-		pUavResource = m_pointBuffer1->GetResource();
+		pUavResource = m_dataFrames[1].m_pointList->GetResource();
 	}
 
 	pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pUavResource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));

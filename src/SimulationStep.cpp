@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "SimulationStep.h"
+#include "DXSample.h"
 
 void SimulationStep::BuildRootSignature()
 {
@@ -62,13 +63,38 @@ void SimulationStep::BuildRootSignature()
 	}
 }
 
-SimulationStep::SimulationStep(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, DataFrame* frames, SimulationParameters& parameters) :
+void SimulationStep::BuildComputeState(const std::wstring& shaderPath)
+{
+	ComPtr<ID3DBlob> computeShader;
+	
+#if defined(_DEBUG)
+	// Enable better shader debugging with the graphics debugging tools.
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	UINT compileFlags = 0;
+#endif
+
+	D3DReadFileToBlob(shaderPath.c_str(), &computeShader);
+
+	// Describe and create the compute pipeline state object (PSO).
+	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
+	computePsoDesc.pRootSignature = m_rootSignature.Get();
+	computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(computeShader.Get());
+
+	ThrowIfFailed(m_device.CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_computeState)));
+	NAME_D3D12_OBJECT(m_computeState);
+}
+
+
+
+SimulationStep::SimulationStep(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, DataFrame* frames, SimulationParameters& parameters, const std::wstring& shaderPath) :
 	m_device(device),
 	m_commandList(commandList),
 	m_frames(frames),
 	m_parameters(parameters)
 {
 	BuildRootSignature();
+	BuildComputeState(shaderPath);
 }
 
 

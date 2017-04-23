@@ -8,5 +8,12 @@ struct DataFrame
 {
 	std::unique_ptr<PointList> m_pointList;
 	std::unique_ptr<SpacialIndex> m_spacialIndex;
+
+	void PopulateIndex();
+
+	DataFrame();
+private:
+	DataFrame(const DataFrame& other);
+	void operator=(const DataFrame& other);
 };
 

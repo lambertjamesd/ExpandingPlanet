@@ -2,22 +2,16 @@
 #include "PointList.h"
 #include <algorithm>
 
-PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius) :
-	m_device(device),
-	m_commandList(commandList)
+void PointList::CreateResources()
 {
-	// Initialize the data in the buffers.
-	m_data.resize(pointCount);
-	const UINT dataSize = pointCount * sizeof(Particle);
-
-	LoadParticles(&m_data[0], XMFLOAT3(0, 0, 0), radius, pointCount);
+	const SIZE_T dataSize = m_data.size() * sizeof(Particle);
 
 	D3D12_HEAP_PROPERTIES defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	D3D12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	D3D12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(dataSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 	D3D12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(dataSize);
 
-	ThrowIfFailed(device.CreateCommittedResource(
+	ThrowIfFailed(m_device.CreateCommittedResource(
 		&defaultHeapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&bufferDesc,
@@ -25,7 +19,7 @@ PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandLis
 		nullptr,
 		IID_PPV_ARGS(&m_particleBuffer)));
 
-	ThrowIfFailed(device.CreateCommittedResource(
+	ThrowIfFailed(m_device.CreateCommittedResource(
 		&uploadHeapProperties,
 		D3D12_HEAP_FLAG_NONE,
 		&uploadBufferDesc,
@@ -34,7 +28,26 @@ PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandLis
 		IID_PPV_ARGS(&m_particleBufferUpload)));
 
 	NAME_D3D12_OBJECT(m_particleBuffer);
-	NAME_D3D12_OBJECT(m_particleBuffer);
+}
+
+PointList::PointList(const PointList& other) :
+	m_device(other.m_device),
+	m_commandList(other.m_commandList),
+	m_data(other.m_data)
+{
+	CreateResources();
+}
+
+PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius) :
+	m_device(device),
+	m_commandList(commandList)
+{
+	// Initialize the data in the buffers.
+	m_data.resize(pointCount);
+
+	LoadParticles(&m_data[0], XMFLOAT3(0, 0, 0), radius, pointCount);
+
+	CreateResources();
 }
 
 
