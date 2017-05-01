@@ -76,7 +76,7 @@ UINT32 SpacialIndex::PositionToIndex(XMFLOAT3 position)
 			) * m_cellRowCount;
 }
 
-void SpacialIndex::PopulateIndex(PointList& pointList)
+void SpacialIndex::PopulateIndex(PointList& pointList, ID3D12GraphicsCommandList& commandList)
 {
 	UINT32 dataSize = sizeof(UINT32) * m_cellCount;
 	std::vector<UINT32> data;
@@ -89,6 +89,14 @@ void SpacialIndex::PopulateIndex(PointList& pointList)
 		pointList.SetNextPoint(i, data[cell]);
 		data[cell] = i;
 	}
+
+	D3D12_SUBRESOURCE_DATA indexData = {};
+	indexData.pData = reinterpret_cast<UINT8*>(&data[0]);
+	indexData.RowPitch = dataSize;
+	indexData.SlicePitch = indexData.RowPitch;
+
+	UpdateSubresources<1>(&commandList, m_particleIndex.Get(), m_particleUpload.Get(), 0, 0, 1, &indexData);
+	commandList.ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_particleIndex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 }
 
 D3D12_SHADER_RESOURCE_VIEW_DESC SpacialIndex::SRVDesc()

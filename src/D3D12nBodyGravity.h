@@ -19,6 +19,8 @@
 #include "Spectrum.h"
 #include "DataFrame.h"
 #include "SimulationStep.h"
+#include "CameraParameters.h"
+#include "IndexDebugDraw.h"
 #include <memory>
 
 using namespace DirectX;
@@ -45,7 +47,7 @@ public:
 private:
 	static const UINT FrameCount = 2;
 	static const float ParticleSpread;
-	static const UINT ParticleCount = 10000;		// The number of particles in the n-body simulation.
+	static const UINT ParticleCount = 200;		// The number of particles in the n-body simulation.
 
 	// "Vertex" definition for particles. Triangle vertices are generated 
 	// by the geometry shader. Color data will be assigned to those 
@@ -53,16 +55,6 @@ private:
 	struct ParticleVertex
 	{
 		XMFLOAT4 color;
-	};
-
-	struct ConstantBufferGS
-	{
-		XMFLOAT4X4 worldViewProjection;
-		XMFLOAT4X4 inverseView;
-
-		// Constant buffers are 256-byte aligned in GPU memory. Padding is added
-		// for convenience when computing the struct's size.
-		float padding[32];
 	};
 
 	// Pipeline objects.
@@ -87,6 +79,8 @@ private:
 
 	std::unique_ptr<SimulationParameters> m_parameters;
 	std::unique_ptr<SimulationStep> m_simulationState;
+	std::unique_ptr<CameraParameters> m_cameraParameters;
+	std::unique_ptr<IndexDebugDraw> m_indexDebugDraw;
 
 	// Asset objects.
 	ComPtr<ID3D12PipelineState> m_pipelineState;
@@ -96,8 +90,6 @@ private:
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
 	DataFrame m_dataFrames[FrameCount];
 	std::unique_ptr<Spectrum> m_hueSpectrum;
-	ComPtr<ID3D12Resource> m_constantBufferGS;
-	UINT8* m_pConstantBufferGSData;
 	ComPtr<ID3D12Resource> m_particleNormal;
 	ComPtr<ID3D12Resource> m_particleNormalUpload;
 

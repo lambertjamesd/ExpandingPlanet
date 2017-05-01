@@ -31,12 +31,15 @@ public:
 		ID3D12Device& device, 
 		ID3D12GraphicsCommandList& commandList, 
 		float particleRadius, 
-		UINT32 particleCount
+		UINT32 particleCount,
+		float simulationSize,
+		UINT32 indexSize
 	);
 	~SimulationParameters();
 
 	void PostUpdate();
 	ID3D12Resource* GetConstantBuffer();
 	SimulationData& GetData();
+	UINT32 IndexCellCount();
 };
 

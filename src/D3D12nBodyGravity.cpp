@@ -29,7 +29,6 @@ D3D12nBodyGravity::D3D12nBodyGravity(UINT width, UINT height, std::wstring name)
 	m_dsvDescriptorSize(0),
 	m_srvUavDescriptorSize(0),
 	m_depthBufferFormat(DXGI_FORMAT_D16_UNORM),
-	m_pConstantBufferGSData(nullptr),
 	m_renderContextFenceValue(0),
 	m_terminating(0),
 	m_frameFenceValues{}
@@ -307,28 +306,12 @@ void D3D12nBodyGravity::LoadAssets()
 	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
 	NAME_D3D12_OBJECT(m_commandList);
 
+	m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount, ParticleSpread * 2.0f, 3));
+
 	CreateVertexBuffer();
 	CreateParticleBuffers();
 
-	// Create the geometry shader's constant buffer.
-	{
-		const UINT constantBufferGSSize = sizeof(ConstantBufferGS) * FrameCount;
-
-		ThrowIfFailed(m_device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(constantBufferGSSize),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(&m_constantBufferGS)
-			));
-
-		NAME_D3D12_OBJECT(m_constantBufferGS);
-
-		CD3DX12_RANGE readRange(0, 0);		// We do not intend to read from this resource on the CPU.
-		ThrowIfFailed(m_constantBufferGS->Map(0, &readRange, reinterpret_cast<void**>(&m_pConstantBufferGSData)));
-		ZeroMemory(m_pConstantBufferGSData, constantBufferGSSize);
-	}
+	m_cameraParameters.reset(new CameraParameters(*m_device.Get(), FrameCount));
 
 	m_hueSpectrum.reset(new Spectrum(*m_device.Get(), *m_commandList.Get(), 256));
 	m_hueSpectrum->HueSpectrum(300.0f);
@@ -400,8 +383,10 @@ void D3D12nBodyGravity::LoadAssets()
 		m_device->CreateShaderResourceView(m_particleNormal.Get(), &srvDesc, cpuHandle);
 	}
 
-	m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount));
 	m_simulationState.reset(new SimulationStep(*m_device.Get(), *m_commandList.Get(), m_dataFrames, *m_parameters, GetAssetFullPath(L"SimulationStep.cso")));
+	m_indexDebugDraw.reset(new IndexDebugDraw(*m_device.Get(), *m_cameraParameters, m_dataFrames, *m_parameters));
+
+	m_indexDebugDraw->BuildPipelineState(GetAssetFullPath(L"IndexDebugDrawVS.cso"), GetAssetFullPath(L"IndexDebugDrawGS.cso"), GetAssetFullPath(L"IndexDebugDrawPS.cso"));
 
 	// Close the command list and execute it to begin the initial GPU setup.
 	ThrowIfFailed(m_commandList->Close());
@@ -471,7 +456,7 @@ void D3D12nBodyGravity::CreateParticleBuffers()
 	m_dataFrames[0].m_pointList.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, ParticleSpread));
 	m_dataFrames[1].m_pointList.reset(new PointList(*m_dataFrames[0].m_pointList));
 
-	UINT32 indexResolution = 32;
+	UINT32 indexResolution = m_parameters->GetData().indexSize;
 
 	m_dataFrames[0].m_spacialIndex.reset(new SpacialIndex(
 		*m_device.Get(),
@@ -487,8 +472,8 @@ void D3D12nBodyGravity::CreateParticleBuffers()
 		indexResolution
 	));
 
-	m_dataFrames[0].PopulateIndex();
-	m_dataFrames[1].PopulateIndex();
+	m_dataFrames[0].PopulateIndex(*m_commandList.Get());
+	m_dataFrames[1].PopulateIndex(*m_commandList.Get());
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -558,12 +543,11 @@ void D3D12nBodyGravity::OnUpdate()
 	m_timer.Tick(NULL);
 	m_camera.Update(static_cast<float>(m_timer.GetElapsedSeconds()));
 
-	ConstantBufferGS constantBufferGS = {};
-	XMStoreFloat4x4(&constantBufferGS.worldViewProjection, XMMatrixMultiply(m_camera.GetViewMatrix(), m_camera.GetProjectionMatrix(0.8f, m_aspectRatio, 1.0f, 5000.0f)));
-	XMStoreFloat4x4(&constantBufferGS.inverseView, XMMatrixInverse(nullptr, m_camera.GetViewMatrix()));
-
-	UINT8* destination = m_pConstantBufferGSData + sizeof(ConstantBufferGS) * m_frameIndex;
-	memcpy(destination, &constantBufferGS, sizeof(ConstantBufferGS));
+	m_cameraParameters->Update(
+		m_frameIndex,
+		XMMatrixMultiply(m_camera.GetViewMatrix(), m_camera.GetProjectionMatrix(0.8f, m_aspectRatio, 1.0f, 5000.0f)),
+		XMMatrixInverse(nullptr, m_camera.GetViewMatrix())
+	);
 }
 
 // Render the scene.
@@ -613,7 +597,7 @@ void D3D12nBodyGravity::PopulateCommandList()
 	m_commandList->SetPipelineState(m_pipelineState.Get());
 	m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
-	m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_constantBufferGS->GetGPUVirtualAddress() + m_frameIndex * sizeof(ConstantBufferGS));
+	m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_cameraParameters->GetGPUVirtualAddress(m_frameIndex));
 
 	ID3D12DescriptorHeap* pixelHeaps[] = { m_srvHeap.Get() };
 	m_commandList->SetDescriptorHeaps(_countof(pixelHeaps), pixelHeaps);
@@ -644,7 +628,8 @@ void D3D12nBodyGravity::PopulateCommandList()
 	float viewportHeight = static_cast<float>(static_cast<UINT>(m_viewport.Height) / m_heightInstances);
 	float viewportWidth = static_cast<float>(static_cast<UINT>(m_viewport.Width) / m_widthInstances);
 
-	const UINT srvIndex = ((m_parameters->GetData().currentBatch & 0x1) == 0 ? SrvParticlePosVelo0 : SrvParticlePosVelo1);
+	UINT sourceIndex = m_parameters->GetData().currentBatch & 0x1;
+	const UINT srvIndex = (sourceIndex == 0 ? SrvParticlePosVelo0 : SrvParticlePosVelo1);
 
 	CD3DX12_VIEWPORT viewport(
 		0.0f,
@@ -660,6 +645,8 @@ void D3D12nBodyGravity::PopulateCommandList()
 	PIXBeginEvent(m_commandList.Get(), 0, L"Draw particles for thread %u", 0);
 	m_commandList->DrawInstanced(ParticleCount, 1, 0, 0);
 	PIXEndEvent(m_commandList.Get());
+
+	m_indexDebugDraw->Render(*m_commandList.Get(), m_frameIndex, sourceIndex);
 
 	m_commandList->RSSetViewports(1, &m_viewport);
 
@@ -733,7 +720,7 @@ void D3D12nBodyGravity::OnDestroy()
 	WaitForRenderContext();
 
 	// Close handles to fence events and threads.
-	CloseHandle(m_renderContextFenceEvent);
+	CloseHandle(m_renderContextFenceEvent); 
 	CloseHandle(m_threadHandles);
 	CloseHandle(m_threadFenceEvents);
 }

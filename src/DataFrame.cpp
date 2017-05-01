@@ -6,8 +6,8 @@ DataFrame::DataFrame()
 
 }
 
-void DataFrame::PopulateIndex()
+void DataFrame::PopulateIndex(ID3D12GraphicsCommandList& commandList)
 {
-	m_spacialIndex->PopulateIndex(*m_pointList);
+	m_spacialIndex->PopulateIndex(*m_pointList, commandList);
 	m_pointList->PouplateBuffer();
 }

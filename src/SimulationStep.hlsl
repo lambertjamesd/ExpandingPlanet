@@ -1,27 +1,7 @@
 
 #define blocksize 128
 
-struct PosVelo
-{
-	float4 pos;
-	uint nextPoint;
-	uint prevIndexCell;
-	uint2 padding;
-};
-
-cbuffer cbCS : register(b0)
-{
-	float particleRadius;
-	float maxTime;
-	float coreRadius;
-	float currentTime;
-	float particleVelocity;
-	float solidPressure;
-	float cellWidth;
-	uint indexSize;
-	uint particleCount;
-	uint currentBatch;
-};
+#include "Common.hlsl"
 
 cbuffer cbImmutable
 {
@@ -61,15 +41,15 @@ uint GetNext(uint current)
 
 uint GetFirstPoint(uint index)
 {
-	return oldIndex[index] & 0x78888888;
+	return oldIndex[index] & 0x7FFFFFFF;
 }
 
 uint WriteToIndex(uint index, uint pointIndex)
 {
 	uint result;
-	InterlockedExchange(newIndex[index], pointIndex, result);
+	InterlockedExchange(newIndex[index], pointIndex | ((currentBatch & 0x2) << 30), result);
 
-	if ((currentBatch & 0x2) != (result & 0x80000000) >> 30)
+	if (((currentBatch & 0x2) == 0) != ((result & 0x80000000) == 0))
 	{
 		result = Nil;
 	}

@@ -27,7 +27,7 @@ public:
 
 	ID3D12Resource* GetResource();
 
-	void PopulateIndex(PointList& pointList);
+	void PopulateIndex(PointList& pointList, ID3D12GraphicsCommandList& commandList);
 	D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc();
 	D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc();
 };

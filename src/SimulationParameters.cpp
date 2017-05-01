@@ -6,7 +6,9 @@ SimulationParameters::SimulationParameters(
 	ID3D12Device& device,
 	ID3D12GraphicsCommandList& commandList,
 	float particleRadius,
-	UINT32 particleCount
+	UINT32 particleCount,
+	float simulationSize,
+	UINT32 indexSize
 ) : 
 	m_device(device)
 {
@@ -33,8 +35,8 @@ SimulationParameters::SimulationParameters(
 	m_data->currentTime = 0.0f;
 	m_data->particleVelocity = 0.1f;
 	m_data->solidPressure = 1.0f;
-	m_data->cellWidth = std::fmax(particleRadius * 2.0f, 0.0f);
-	m_data->indexSize = 10;
+	m_data->cellWidth = std::fmax(particleRadius * 2.0f, simulationSize / indexSize);
+	m_data->indexSize = indexSize;
 	m_data->particleCount = particleCount;
 	m_data->currentBatch = 0;
 }
@@ -57,4 +59,9 @@ ID3D12Resource* SimulationParameters::GetConstantBuffer()
 SimulationParameters::SimulationData& SimulationParameters::GetData()
 {
 	return *m_data;
+}
+
+UINT32 SimulationParameters::IndexCellCount()
+{
+	return m_data->indexSize * m_data->indexSize * m_data->indexSize;
 }

@@ -9,7 +9,7 @@ struct DataFrame
 	std::unique_ptr<PointList> m_pointList;
 	std::unique_ptr<SpacialIndex> m_spacialIndex;
 
-	void PopulateIndex();
+	void PopulateIndex(ID3D12GraphicsCommandList& commandList);
 
 	DataFrame();
 private:

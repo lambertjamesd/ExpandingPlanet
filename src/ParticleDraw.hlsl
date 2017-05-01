@@ -89,7 +89,7 @@ VSParticleDrawOut VSParticleDraw(VSParticleIn input)
 	
 	output.pos = g_bufPosVelo[input.id].pos.xyz;
 
-	float spectrumInput = input.id / 10000.0f;
+	float spectrumInput = input.id / 200.0f;
 		
 	output.color = g_spectrum.SampleLevel(g_sampler, float2(spectrumInput, 0), 0);
 

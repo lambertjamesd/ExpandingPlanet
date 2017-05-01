@@ -109,6 +109,11 @@ XMMATRIX SimpleCamera::GetProjectionMatrix(float fov, float aspectRatio, float n
 	return XMMatrixPerspectiveFovRH(fov, aspectRatio, nearPlane, farPlane);
 }
 
+XMMATRIX SimpleCamera::GetOrthoMatrix(float height, float aspectRatio, float nearPlane, float farPlane)
+{
+	return XMMatrixOrthographicLH(aspectRatio * height, height, nearPlane, farPlane);
+}
+
 void SimpleCamera::OnKeyDown(WPARAM key)
 {
 	switch (key)
