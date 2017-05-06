@@ -121,9 +121,6 @@
     <CustomBuild Include="NBodyGravityCS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </CustomBuild>
-    <CustomBuild Include="ParticleDraw.hlsl">
-      <Filter>Assets\Shaders</Filter>
-    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -131,6 +128,9 @@
       <Filter>Assets\Shaders</Filter>
     </None>
     <None Include="IndexDebugDraw.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </None>
+    <None Include="ParticleDraw.hlsl">
       <Filter>Assets\Shaders</Filter>
     </None>
   </ItemGroup>
@@ -145,6 +145,15 @@
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
     <FxCompile Include="IndexDebugDrawPS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="ParticleDrawVS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="ParticleDrawGS.hlsl">
+      <Filter>Assets\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="ParticleDrawPS.hlsl">
       <Filter>Assets\Shaders</Filter>
     </FxCompile>
   </ItemGroup>

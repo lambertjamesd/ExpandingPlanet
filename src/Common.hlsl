@@ -20,3 +20,5 @@ cbuffer cbCS : register(b0)
 	uint particleCount;
 	uint currentBatch;
 };
+
+#define MAX_POINTS_PER_CELL 64

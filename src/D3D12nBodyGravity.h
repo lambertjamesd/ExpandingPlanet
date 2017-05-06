@@ -46,8 +46,7 @@ public:
 
 private:
 	static const UINT FrameCount = 2;
-	static const float ParticleSpread;
-	static const UINT ParticleCount = 200;		// The number of particles in the n-body simulation.
+	static const UINT ParticleCount = 1000000;		// The number of particles in the n-body simulation.
 
 	// "Vertex" definition for particles. Triangle vertices are generated 
 	// by the geometry shader. Color data will be assigned to those 
@@ -129,7 +128,8 @@ private:
 	// Indices of the root signature parameters.
 	enum GraphicsRootParameters : UINT32
 	{
-		GraphicsRootCBV = 0,
+		GraphicsRootParameters = 0,
+		GraphicsRootCBV,
 		GraphicsRootSRVTable,
 		GraphicsRootPixelTable,
 		GraphicsRootParametersCount

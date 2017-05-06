@@ -25,11 +25,11 @@ private:
 	ComPtr<ID3D12Resource> m_particleBufferUpload;
 
 	float RandomPercent();
-	void LoadParticles(_Out_writes_(numParticles) Particle* pParticles, const XMFLOAT3 &center, float spread, UINT numParticles);
+	void LoadParticles(_Out_writes_(numParticles) Particle* pParticles, const XMFLOAT3 &center, float spread, float innerRadius, UINT numParticles);
 	void CreateResources();
 public:
 	PointList(const PointList& other);
-	PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius);
+	PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius, float innerRadius);
 	~PointList();
 
 	void PouplateBuffer();

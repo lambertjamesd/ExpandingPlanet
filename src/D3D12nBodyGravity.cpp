@@ -18,8 +18,6 @@
 // change and 0 will be returned.
 #define InterlockedGetValue(object) InterlockedCompareExchange(object, 0, 0)
 
-const float D3D12nBodyGravity::ParticleSpread = 400.0f;
-
 D3D12nBodyGravity::D3D12nBodyGravity(UINT width, UINT height, std::wstring name) :
 	DXSample(width, height, name),
 	m_frameIndex(0),
@@ -241,7 +239,8 @@ void D3D12nBodyGravity::LoadAssets()
 			pixelRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 			
 			CD3DX12_ROOT_PARAMETER1 rootParameters[GraphicsRootParametersCount];
-			rootParameters[GraphicsRootCBV].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+			rootParameters[GraphicsRootCBV].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+			rootParameters[GraphicsRootParameters].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
 			rootParameters[GraphicsRootSRVTable].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_VERTEX);
 			rootParameters[GraphicsRootPixelTable].InitAsDescriptorTable(2, &pixelRanges[0], D3D12_SHADER_VISIBILITY_ALL);
 
@@ -271,10 +270,9 @@ void D3D12nBodyGravity::LoadAssets()
 		UINT compileFlags = 0;
 #endif
 
-		// Load and compile shaders.
-		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "VSParticleDraw", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
-		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "GSParticleDraw", "gs_5_0", compileFlags, 0, &geometryShader, nullptr));
-		ThrowIfFailed(D3DCompileFromFile(GetAssetFullPath(L"ParticleDraw.hlsl").c_str(), nullptr, nullptr, "PSParticleDraw", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
+		D3DReadFileToBlob(GetAssetFullPath(L"ParticleDrawVS.cso").c_str(), &vertexShader);
+		D3DReadFileToBlob(GetAssetFullPath(L"ParticleDrawGS.cso").c_str(), &geometryShader);
+		D3DReadFileToBlob(GetAssetFullPath(L"ParticleDrawPS.cso").c_str(), &pixelShader);
 
 		D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
 		{
@@ -306,7 +304,7 @@ void D3D12nBodyGravity::LoadAssets()
 	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
 	NAME_D3D12_OBJECT(m_commandList);
 
-	m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 1.0f, ParticleCount, ParticleSpread * 2.0f, 3));
+	m_parameters.reset(new SimulationParameters(*m_device.Get(), *m_commandList.Get(), 10.0f, ParticleCount, 0.0f, 2.0f, 200000000.0f, 10000.0f));
 
 	CreateVertexBuffer();
 	CreateParticleBuffers();
@@ -453,22 +451,25 @@ void D3D12nBodyGravity::CreateVertexBuffer()
 // Create the position and velocity buffer shader resources.
 void D3D12nBodyGravity::CreateParticleBuffers()
 {
-	m_dataFrames[0].m_pointList.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, ParticleSpread));
+	float particleSpread = m_parameters->GetStartRadius();
+
+	m_dataFrames[0].m_pointList.reset(new PointList(*m_device.Get(), *m_commandList.Get(), ParticleCount, particleSpread, m_parameters->GetData().coreRadius));
 	m_dataFrames[1].m_pointList.reset(new PointList(*m_dataFrames[0].m_pointList));
 
 	UINT32 indexResolution = m_parameters->GetData().indexSize;
+	float cellSize = m_parameters->GetData().cellWidth;
 
 	m_dataFrames[0].m_spacialIndex.reset(new SpacialIndex(
 		*m_device.Get(),
 		*m_commandList.Get(), 
-		ParticleSpread * 2.0f / indexResolution,
+		cellSize,
 		indexResolution
 	));
 
 	m_dataFrames[1].m_spacialIndex.reset(new SpacialIndex(
 		*m_device.Get(),
 		*m_commandList.Get(),
-		ParticleSpread * 2.0f / indexResolution,
+		cellSize,
 		indexResolution
 	));
 
@@ -597,6 +598,7 @@ void D3D12nBodyGravity::PopulateCommandList()
 	m_commandList->SetPipelineState(m_pipelineState.Get());
 	m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
+	m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootParameters, m_parameters->GetConstantBuffer()->GetGPUVirtualAddress());
 	m_commandList->SetGraphicsRootConstantBufferView(GraphicsRootCBV, m_cameraParameters->GetGPUVirtualAddress(m_frameIndex));
 
 	ID3D12DescriptorHeap* pixelHeaps[] = { m_srvHeap.Get() };
@@ -643,10 +645,10 @@ void D3D12nBodyGravity::PopulateCommandList()
 	m_commandList->SetGraphicsRootDescriptorTable(GraphicsRootSRVTable, srvHandle);
 
 	PIXBeginEvent(m_commandList.Get(), 0, L"Draw particles for thread %u", 0);
-	m_commandList->DrawInstanced(ParticleCount, 1, 0, 0);
+	m_commandList->DrawInstanced(ParticleCount , 1, 0, 0);
 	PIXEndEvent(m_commandList.Get());
 
-	m_indexDebugDraw->Render(*m_commandList.Get(), m_frameIndex, sourceIndex);
+	//m_indexDebugDraw->Render(*m_commandList.Get(), m_frameIndex, sourceIndex);
 
 	m_commandList->RSSetViewports(1, &m_viewport);
 

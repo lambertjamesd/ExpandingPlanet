@@ -38,14 +38,14 @@ PointList::PointList(const PointList& other) :
 	CreateResources();
 }
 
-PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius) :
+PointList::PointList(ID3D12Device& device, ID3D12GraphicsCommandList& commandList, UINT32 pointCount, float radius, float innerRadius) :
 	m_device(device),
 	m_commandList(commandList)
 {
 	// Initialize the data in the buffers.
 	m_data.resize(pointCount);
 
-	LoadParticles(&m_data[0], XMFLOAT3(0, 0, 0), radius, pointCount);
+	LoadParticles(&m_data[0], XMFLOAT3(0, 0, 0), radius, innerRadius, pointCount);
 
 	CreateResources();
 }
@@ -74,14 +74,16 @@ float PointList::RandomPercent()
 	return ret / 5000.0f;
 }
 
-void PointList::LoadParticles(_Out_writes_(numParticles) Particle* pParticles, const XMFLOAT3& center, float spread, UINT numParticles)
+void PointList::LoadParticles(_Out_writes_(numParticles) Particle* pParticles, const XMFLOAT3& center, float spread, float innerRadius, UINT numParticles)
 {
 	srand(0);
 	for (UINT i = 0; i < numParticles; i++)
 	{
 		XMFLOAT3 delta(spread, spread, spread);
 
-		while (XMVectorGetX(XMVector3LengthSq(XMLoadFloat3(&delta))) > spread * spread)
+		assert(spread > innerRadius);
+
+		while (XMVectorGetX(XMVector3LengthSq(XMLoadFloat3(&delta))) > spread * spread || XMVectorGetX(XMVector3LengthSq(XMLoadFloat3(&delta))) < innerRadius * innerRadius)
 		{
 			delta.x = RandomPercent() * spread;
 			delta.y = RandomPercent() * spread;
@@ -96,11 +98,11 @@ void PointList::LoadParticles(_Out_writes_(numParticles) Particle* pParticles, c
 		pParticles[i].nextPoint = ~0;
 	}
 
-	std::sort(pParticles, pParticles + numParticles,
+	/*std::sort(pParticles, pParticles + numParticles,
 		[](const Particle & a, const Particle & b) -> bool
 	{
 		return a.position.x > b.position.x;
-	});
+	});*/
 }
 
 ID3D12Resource* PointList::GetResource()

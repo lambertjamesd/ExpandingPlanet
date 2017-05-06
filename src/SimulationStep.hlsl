@@ -41,7 +41,16 @@ uint GetNext(uint current)
 
 uint GetFirstPoint(uint index)
 {
-	return oldIndex[index] & 0x7FFFFFFF;
+	uint result = oldIndex[index];
+
+	if (result == Nil)
+	{
+		return Nil;
+	}
+	else
+	{
+		return result & 0x7FFFFFFF;
+	}
 }
 
 uint WriteToIndex(uint index, uint pointIndex)
@@ -63,25 +72,77 @@ void ClearIndex(uint index, uint pointIndex)
 	InterlockedCompareStore(newIndex[index], pointIndex | ((~currentBatch) & 0x2) << 30, Nil);
 }
 
+void Overlap(float3 target, float3 other, inout float3 moveAmount)
+{
+	float3 offset = target - other;
+
+	if (dot(offset, offset) < 4 * particleRadius * particleRadius)
+	{
+		float3 normal = normalize(offset);
+		moveAmount += normal * 0.5 * (2 * particleRadius - dot(normal, offset));
+	}
+}
+
+void OverlapPointsInCell(float3 startPos, uint cellIndex, inout float3 moveAmount)
+{
+	uint current = GetFirstPoint(cellIndex);
+	uint i = 0;
+
+	while (current != Nil && i < MAX_POINTS_PER_CELL)
+	{
+		float3 other = oldPoint[current].pos;
+		if (any(other != startPos))
+		{
+			Overlap(startPos, other, moveAmount);
+		}
+		current = oldPoint[current].nextPoint;
+		++i;
+	}
+}
+
+void OverlapPoints(float3 startPos, inout float3 moveAmount)
+{
+	uint3 minCell = PostionToCellPosition(startPos - 2 * particleRadius);
+	uint3 maxCell = PostionToCellPosition(startPos + 2 * particleRadius);
+
+	uint3 cell;
+	uint i = 0;
+
+	for (cell.z = minCell.z; cell.z <= maxCell.z && i < 27; ++cell.z)
+	{
+		for (cell.y = minCell.y; cell.y <= maxCell.y && i < 27; ++cell.y)
+		{
+			for (cell.x = minCell.x; cell.x <= maxCell.x && i < 27; ++cell.x)
+			{
+				uint cellIndex = CellPositionToIndex(cell);
+				OverlapPointsInCell(startPos, cellIndex, moveAmount);
+				++i;
+			}
+		}
+	}
+
+	if (dot(moveAmount, moveAmount) > particleRadius * particleRadius * 4.0f)
+	{
+		moveAmount = normalize(moveAmount) * particleRadius * 2;
+	}
+}
+
 [numthreads(blocksize, 1, 1)]
 void SimulationStep(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
 	uint pointIndex = DTid.x;
 	float3 pos = oldPoint[pointIndex].pos.xyz;
 	uint lastIndex = PositionToIndex(pos);
+	float3 moveAmount = -normalize(pos) * 0.1;
 
-	float cosVal;
-	float sinVal;
+	OverlapPoints(pos, moveAmount);
 
-	sincos(3.14 / 60000, sinVal, cosVal);
+	pos += moveAmount;
 
-	float3x3 rotationMatrix = {
-		cosVal, -sinVal, 0,
-		sinVal, cosVal, 0,
-		0, 0, 1
-	};
-
-	pos = mul(pos, rotationMatrix);
+	if (dot(pos, pos) < coreRadius * coreRadius)
+	{
+		pos = normalize(pos) * coreRadius;
+	}
 
 	uint currentIndex = PositionToIndex(pos);
 

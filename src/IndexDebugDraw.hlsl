@@ -1,8 +1,6 @@
 
 #include "Common.hlsl"
 
-#define MAX_POINTS_PER_CELL 64
-
 struct IndexDebugDrawVSIn
 {
 	uint id : SV_VERTEXID;
